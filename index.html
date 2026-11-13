@@ -68,7 +68,6 @@ td:first-child,th:first-child{text-align:left;position:sticky;left:0;background:
 .grp-surge th{background:var(--surge-bg);color:var(--surge);}
 .cell-unboost{background:color-mix(in srgb, var(--unboost-bg) 55%, transparent);}
 .cell-surge{background:color-mix(in srgb, var(--surge-bg) 55%, transparent);}
-.selected-row td{outline:2px solid var(--accent2); outline-offset:-2px;}
 .status{color:var(--muted);font-style:italic;font-size:.75rem;}
 .badge{display:inline-block;font-size:.65rem;padding:1px 6px;border-radius:10px;margin-left:4px;}
 .badge.bait{background:var(--accent2);color:#2b1700;}
@@ -288,6 +287,7 @@ function render(){
   topGrid.appendChild(renderFishTable(pool));
   topGrid.appendChild(renderComparisonPanel(pool));
   root.appendChild(topGrid);
+  root.appendChild(renderSimulationTab(pool));
   root.appendChild(renderMatrix(pool));
   if(state.selectedFishId) root.appendChild(renderDetail(pool));
   root.appendChild(el('footer',{}, 'Data is stored locally in this browser and will not sync between devices.'));
@@ -296,6 +296,52 @@ function render(){
 function toggleTheme(){
   const cur = document.documentElement.getAttribute('data-theme');
   document.documentElement.setAttribute('data-theme', cur==='dark'?'light':'dark');
+}
+
+function renderSimulationTab(pool){
+  const wrap = el('div',{class:'panel'});
+  wrap.appendChild(el('h3',{},'Catch Simulation'));
+  const activeKey = activeScenarioKey(pool);
+  const activeLabel = SCENARIOS.find(sc=>sc.key===activeKey).label;
+  wrap.appendChild(el('div',{class:'small', style:'margin-bottom:12px;color:var(--muted)'}, 'Since you don\u2019t know how much time it takes between locations, use this to see how many of each fish you\u2019d expect to land over a given number of total catches \u2014 using the same scenario as the comparison above (currently \u201c'+activeLabel+'\u201d).'));
+
+  const inp = el('input',{type:'number', min:0, step:1, value: state.simCount ?? 100, style:'width:130px', onchange:(e)=>{ let v=parseInt(e.target.value); if(isNaN(v)||v<0){alert('Enter a non-negative whole number of fish.'); render(); return;} state.simCount=v; save(); render(); }});
+  wrap.appendChild(el('div',{class:'row', style:'margin-bottom:16px'}, el('span',{class:'small'},'Total fish caught in the sample: '), inp));
+
+  const n = state.simCount ?? 100;
+  const scen = allScenarios(pool);
+  const result = scen[activeKey];
+  if(pool.fish.length===0){
+    wrap.appendChild(el('div',{}, 'Add some fish to this pool to run a simulation.'));
+    return wrap;
+  }
+  if(result.total<=0){
+    wrap.appendChild(el('div',{}, el('strong',{},'No valid distribution: '), 'total weight for the \u201c'+activeLabel+'\u201d scenario is zero.'));
+    return wrap;
+  }
+
+  const tbl = el('table',{});
+  tbl.appendChild(el('thead',{},el('tr',{},
+    el('th',{},'Fish'), el('th',{},'Probability'), el('th',{title:'Expected number landed out of '+n+' total catches under this scenario, with the typical give-or-take shown faintly alongside it.'},'Expectation')
+  )));
+  const tb = el('tbody',{});
+  let expSum = 0;
+  orderedFish(pool).forEach(f=>{
+    const r = result.rows.find(x=>x.fish.id===f.id);
+    const p = r.prob;
+    const exp = n*p;
+    const sd = Math.sqrt(n*p*(1-p));
+    expSum += exp;
+    tb.appendChild(el('tr',{class:f.id===state.selectedFishId?'selected-row':''},
+      el('td',{style:'text-align:left'}, f.name),
+      el('td',{}, pct(p)),
+      el('td',{}, exp.toFixed(2)+' ', el('span',{style:'color:var(--muted);opacity:.6;font-size:.72rem;'}, '\u00b1'+sd.toFixed(2)))
+    ));
+  });
+  tbl.appendChild(tb);
+  wrap.appendChild(tbl);
+  wrap.appendChild(el('div',{class:'small', style:'margin-top:10px;color:var(--muted)'}, 'Modeled as '+n+' independent catches drawn from the \u201c'+activeLabel+'\u201d distribution. The faint \u00b1 figure is one standard deviation \u2014 the typical swing you\u2019d see from one sample to the next. Expected counts sum to '+expSum.toFixed(2)+', which should be \u2248 '+n+'.'));
+  return wrap;
 }
 
 // ---------- Fish table ----------
